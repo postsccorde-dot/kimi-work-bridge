@@ -1,8 +1,0 @@
-{
-  "task_name": "test_task",
-  "priority": "high",
-  "instructions": "请执行测试任务",
-  "created_by": "workbuddy",
-  "status": "pending",
-  "timestamp": 16396.577818041
-}
