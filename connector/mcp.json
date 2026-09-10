@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "kimi-work-bridge": {
+      "command": "python",
+      "args": [
+        "${workspace}/bridge-service/kimi_work_bridge.py"
+      ],
+      "env": {
+        "KIMI_WORK_BRIDGE_MODE": "stdio",
+        "KIMI_WORK_BRIDGE_ALLOWED_PATHS": "${workspace}/bridge-io",
+        "KIMI_WORK_BRIDGE_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

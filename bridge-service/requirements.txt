@@ -1,0 +1,9 @@
+fastmcp>=1.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+markdown>=3.5.0
+reportlab>=4.0.0
+htmlmin>=0.1.12
+
+pandas>=2.0.0
+openpyxl>=3.1.0

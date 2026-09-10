@@ -1,0 +1,40 @@
+{
+  "name": "kimi-work-bridge",
+  "version": "1.1.0",
+  "description": "将 Kimi Work 的文件分析、数据看板、Markdown/PDF/Excel 报告生成、PPT 大纲、深度研究与任务调度能力接入 WorkBuddy",
+  "author": "Your Name",
+  "license": "MIT",
+  "type": "mcp",
+  "categories": ["productivity", "data", "automation"],
+  "tags": ["kimi", "数据分析", "自动化", "报告生成", "看板", "PDF", "PPT"],
+  "icon": "icon.svg",
+  "entry": {
+    "stdio": {
+      "command": "python",
+      "args": ["${workspace}/bridge-service/kimi_work_bridge.py"],
+      "env": {
+        "KIMI_WORK_BRIDGE_MODE": "stdio"
+      }
+    }
+  },
+  "permissions": [
+    "file:read",
+    "file:write"
+  ],
+  "examples_zh": [
+    "帮我分析 bridge-io/sales_q3.xlsx 并生成数据看板",
+    "把这份数据转换成 Excel 报告",
+    "帮我调研一下 AIGC 在教育行业的最新应用",
+    "将这份 Markdown 报告转成 PDF",
+    "帮我生成 Q3 销售数据的 PPT 大纲"
+  ],
+  "examples_en": [
+    "Analyze sales_q3.xlsx in bridge-io and create a dashboard",
+    "Convert this data into an Excel report",
+    "Research the latest AIGC applications in education",
+    "Convert this Markdown report to PDF",
+    "Generate a PPT outline for Q3 sales data"
+  ],
+  "homepage": "https://github.com/yourname/kimi-work-bridge",
+  "documentation": "https://github.com/yourname/kimi-work-bridge/blob/main/docs/README.md"
+}
