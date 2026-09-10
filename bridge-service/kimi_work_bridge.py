@@ -12,11 +12,9 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from mcp.server.fastmcp import FastMCP
-    from mcp.server import InitializationOptions, NotificationOptions
-    from mcp.server.stdio import stdio_server
+    from mcp.server.mcpserver import MCPServer
 except ImportError:
-    print("ERROR: 请先安装 mcp 库: pip install fastmcp", file=sys.stderr)
+    print("ERROR: 请先安装 mcp 库: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
 # ── 配置 ──────────────────────────────────────────────
@@ -45,14 +43,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(SERVER_NAME)
 
-# 初始化 FastMCP
-mcp = FastMCP(SERVER_NAME)
+# 初始化 MCPServer (mcp 2.x)
+mcp = MCPServer(SERVER_NAME, version=SERVER_VERSION)
 
 
 # ── 辅助函数 ──────────────────────────────────────────
 def _resolve_path(file_path: str) -> Path:
-    """解析路径并确保在白名单内"""
-    p = Path(file_path).expanduser().resolve()
+    """解析路径并确保在白名单内。相对路径基于桥接目录解析。"""
+    p = Path(file_path).expanduser()
+    if not p.is_absolute():
+        p = _ensure_bridge_dir() / p
+    p = p.resolve()
     for allowed in ALLOWED_PATHS:
         try:
             p.relative_to(allowed)
@@ -661,18 +662,8 @@ def get_bridge_info() -> str:
 async def main():
     logger.info(f"{SERVER_NAME} v{SERVER_VERSION} 启动中...")
     logger.info(f"允许目录: {ALLOWED_PATHS}")
-
-    async with stdio_server() as (read_stream, write_stream):
-        init_options = InitializationOptions(
-            server_name=SERVER_NAME,
-            server_version=SERVER_VERSION,
-            capabilities=mcp._mcp_server.get_capabilities(
-                notification_options=NotificationOptions(),
-                experimental_capabilities={}
-            )
-        )
-        logger.info("MCP Server 以 STDIO 模式运行，等待 WorkBuddy 连接...")
-        await mcp._mcp_server.run(read_stream, write_stream, init_options)
+    logger.info("MCP Server 以 STDIO 模式运行，等待 WorkBuddy 连接...")
+    await mcp.run_stdio_async()
 
 
 if __name__ == "__main__":
