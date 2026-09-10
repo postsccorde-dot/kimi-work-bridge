@@ -18,6 +18,7 @@ from kimi_work_bridge import (
     list_workspace_files, read_file, write_file,
     analyze_data, generate_excel_report, generate_markdown_report,
     create_html_dashboard, convert_data_to_pptx_outline,
+    generate_chart_image, generate_pptx,
     create_task_instruction, check_task_status, sync_clipboard,
     get_bridge_info
 )
@@ -127,8 +128,27 @@ check("sync_clipboard write", r)
 r = sync_clipboard("read")
 check("sync_clipboard read", r)
 
-# 10. 安全测试：路径越界
-print("\n[10] 安全测试")
+# 10. 图表与 PPT 生成（v1.2）
+print("\n[10] 图表与 PPT 生成 (v1.2)")
+r = generate_chart_image(
+    "月度销售额",
+    json.dumps([{"月份": "8月", "销售额": 150}, {"月份": "9月", "销售额": 230}], ensure_ascii=False),
+    "charts/monthly_sales.png",
+    "bar"
+)
+check("generate_chart_image", r)
+r = generate_pptx(
+    "桥接服务测试汇报",
+    json.dumps([
+        {"type": "title", "heading": "桥接服务测试汇报", "content": "v1.2 新功能验证"},
+        {"type": "bullets", "heading": "核心能力", "bullet_points": ["文件互通", "数据分析", "报告生成"]}
+    ], ensure_ascii=False),
+    "reports/v12_test.pptx"
+)
+check("generate_pptx", r)
+
+# 11. 安全测试：路径越界
+print("\n[11] 安全测试")
 try:
     r = write_file("/etc/passwd_test", "should fail")
     data = json.loads(r)

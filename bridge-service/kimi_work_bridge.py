@@ -19,7 +19,7 @@ except ImportError:
 
 # ── 配置 ──────────────────────────────────────────────
 SERVER_NAME = "kimi-work-bridge"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.2.0"
 
 # 从环境变量读取允许的目录（逗号分隔），默认使用当前工作目录下的 bridge-io
 DEFAULT_BRIDGE_DIR = Path(__file__).parent.parent / "bridge-io"
@@ -533,6 +533,238 @@ def deep_research_brief(topic: str, scope: str, output_path: str, max_sources: i
 
 
 @mcp.tool()
+def generate_chart_image(title: str, data_json: str, output_path: str, chart_type: str = "bar") -> str:
+    """
+    用 matplotlib 生成 PNG 图表文件。完全离线，不依赖网络，适合嵌入 Word/PPT/PDF 或在无网环境使用。
+
+    参数：
+      - title (str): 图表标题
+      - data_json (str): JSON 数组，每行一个对象，第一列作为标签，其余数值列作为数据系列
+      - output_path (str): 输出 .png 文件路径（必须在白名单目录内）
+      - chart_type (str): 图表类型，可选 "bar"（柱状图）、"line"（折线图）、"pie"（饼图，仅单数值列）
+
+    返回：
+      - str: 操作结果与文件路径
+    """
+    try:
+        p = _resolve_path(output_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            from matplotlib import font_manager
+        except ImportError:
+            return json.dumps({"error": "matplotlib 未安装，无法生成图表。请运行: pip install matplotlib"})
+
+        # 中文字体适配
+        chinese_fonts = ["PingFang SC", "Hiragino Sans GB", "STHeiti", "Microsoft YaHei", "WenQuanYi Zen Hei", "Arial Unicode MS"]
+        available = {f.name for f in font_manager.fontManager.ttflist}
+        for font in chinese_fonts:
+            if font in available:
+                plt.rcParams["font.sans-serif"] = [font, "DejaVu Sans"]
+                break
+        plt.rcParams["axes.unicode_minus"] = False
+
+        data = json.loads(data_json)
+        if not data:
+            return json.dumps({"error": "数据为空"})
+
+        columns = list(data[0].keys())
+        label_col = columns[0]
+        numeric_cols = [c for c in columns[1:] if isinstance(data[0].get(c), (int, float))]
+        if not numeric_cols:
+            return json.dumps({"error": "数据中没有数值列，无法生成图表"})
+
+        labels = [str(row.get(label_col, i)) for i, row in enumerate(data)]
+
+        fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+        ax.set_title(title, fontsize=16, fontweight="bold", pad=14)
+
+        colors = ["#e94560", "#0f3460", "#533483", "#f39422", "#16c79a"]
+
+        if chart_type == "pie":
+            if len(numeric_cols) > 1:
+                return json.dumps({"error": "饼图仅支持单数值列，请在数据中只保留一个数值列"})
+            col = numeric_cols[0]
+            values = [row.get(col, 0) for row in data]
+            ax.pie(values, labels=labels, autopct="%1.1f%%", colors=colors, startangle=90)
+            ax.axis("equal")
+        elif chart_type == "line":
+            for i, col in enumerate(numeric_cols):
+                values = [row.get(col, 0) for row in data]
+                ax.plot(labels, values, marker="o", linewidth=2.5, color=colors[i % 5], label=col)
+            ax.legend(loc="best")
+            ax.grid(True, alpha=0.3)
+        else:  # bar
+            x = range(len(labels))
+            width = 0.8 / max(len(numeric_cols), 1)
+            for i, col in enumerate(numeric_cols):
+                values = [row.get(col, 0) for row in data]
+                offset = (i - (len(numeric_cols) - 1) / 2) * width
+                ax.bar([xi + offset for xi in x], values, width=width * 0.9,
+                       color=colors[i % 5], label=col)
+            ax.set_xticks(list(x))
+            ax.set_xticklabels(labels)
+            if len(numeric_cols) > 1:
+                ax.legend(loc="best")
+            ax.grid(True, alpha=0.3, axis="y")
+
+        fig.tight_layout()
+        fig.savefig(str(p), bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        logger.info(f"已生成图表: {p}")
+        return json.dumps({"success": True, "file_path": str(p), "chart_type": chart_type, "series": len(numeric_cols)})
+    except Exception as e:
+        logger.error(f"generate_chart_image 失败: {e}")
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def generate_pptx(title: str, slides_json: str, output_path: str, theme: str = "default") -> str:
+    """
+    直接生成真正的 .pptx 演示文稿文件，无需再经过大纲转换。支持标题页、要点页和图表图片页。
+
+    参数：
+      - title (str): 演示文稿总标题
+      - slides_json (str): JSON 数组，每个元素为 {"type": "title"|"bullets"|"image", "heading": "页标题", "content": "...", "bullet_points": [...], "image_path": "相对路径", "notes": "演讲备注"}
+      - output_path (str): 输出 .pptx 文件路径（必须在白名单目录内）
+      - theme (str): 主题，可选 "default"（商务蓝）、"dark"（科技黑）、"light"（简约白）
+
+    返回：
+      - str: 操作结果与文件路径
+    """
+    try:
+        p = _resolve_path(output_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            from pptx import Presentation
+            from pptx.util import Inches, Pt
+            from pptx.dml.color import RGBColor
+            from pptx.enum.text import PP_ALIGN
+        except ImportError:
+            return json.dumps({"error": "python-pptx 未安装，无法生成 PPT。请运行: pip install python-pptx"})
+
+        # 主题配色
+        themes = {
+            "default": {"title": RGBColor(0x0F, 0x34, 0x60), "accent": RGBColor(0xE9, 0x45, 0x60), "text": RGBColor(0x33, 0x33, 0x33), "bg": RGBColor(0xFF, 0xFF, 0xFF)},
+            "dark": {"title": RGBColor(0xFF, 0xFF, 0xFF), "accent": RGBColor(0xE9, 0x45, 0x60), "text": RGBColor(0xDD, 0xDD, 0xDD), "bg": RGBColor(0x1A, 0x1A, 0x2E)},
+            "light": {"title": RGBColor(0x33, 0x33, 0x33), "accent": RGBColor(0x16, 0xC7, 0x9A), "text": RGBColor(0x55, 0x55, 0x55), "bg": RGBColor(0xFF, 0xFF, 0xFF)},
+        }
+        t = themes.get(theme, themes["default"])
+
+        prs = Presentation()
+        prs.slide_width = Inches(13.333)
+        prs.slide_height = Inches(7.5)
+
+        blank_layout = prs.slide_layouts[6]
+
+        slides = json.loads(slides_json)
+
+        for i, slide_data in enumerate(slides):
+            slide_type = slide_data.get("type", "bullets")
+            slide = prs.slides.add_slide(blank_layout)
+
+            if slide_type == "title":
+                # 标题页
+                heading = slide_data.get("heading", title)
+                sub = slide_data.get("content", "")
+
+                tb = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(11.3), Inches(1.5))
+                tf = tb.text_frame
+                tf.word_wrap = True
+                para = tf.paragraphs[0]
+                para.text = heading
+                para.font.size = Pt(44)
+                para.font.bold = True
+                para.font.color.rgb = t["title"]
+                para.alignment = PP_ALIGN.CENTER
+
+                if sub:
+                    tb2 = slide.shapes.add_textbox(Inches(1), Inches(4.2), Inches(11.3), Inches(1))
+                    tf2 = tb2.text_frame
+                    tf2.word_wrap = True
+                    para2 = tf2.paragraphs[0]
+                    para2.text = sub
+                    para2.font.size = Pt(20)
+                    para2.font.color.rgb = t["text"]
+                    para2.alignment = PP_ALIGN.CENTER
+
+                # 装饰条
+                bar = slide.shapes.add_shape(1, Inches(5.17), Inches(4.05), Inches(3), Inches(0.06))
+                bar.fill.solid()
+                bar.fill.fore_color.rgb = t["accent"]
+                bar.line.fill.background()
+
+            elif slide_type == "image":
+                # 图片页
+                heading = slide_data.get("heading", "")
+                image_rel = slide_data.get("image_path", "")
+
+                if heading:
+                    tb = slide.shapes.add_textbox(Inches(0.6), Inches(0.3), Inches(12), Inches(0.8))
+                    para = tb.text_frame.paragraphs[0]
+                    para.text = heading
+                    para.font.size = Pt(28)
+                    para.font.bold = True
+                    para.font.color.rgb = t["title"]
+
+                if image_rel:
+                    try:
+                        img_p = _resolve_path(image_rel)
+                        if img_p.exists():
+                            slide.shapes.add_picture(str(img_p), Inches(1.5), Inches(1.3), width=Inches(10.3))
+                    except Exception as e:
+                        logger.warning(f"图片插入失败 {image_rel}: {e}")
+
+            else:
+                # 要点页（默认）
+                heading = slide_data.get("heading", f"第{i+1}页")
+                bullets = slide_data.get("bullet_points", [])
+                if not bullets and slide_data.get("content"):
+                    bullets = [slide_data["content"]]
+
+                # 标题
+                tb = slide.shapes.add_textbox(Inches(0.6), Inches(0.35), Inches(12), Inches(0.9))
+                para = tb.text_frame.paragraphs[0]
+                para.text = heading
+                para.font.size = Pt(30)
+                para.font.bold = True
+                para.font.color.rgb = t["title"]
+
+                # 装饰条
+                bar = slide.shapes.add_shape(1, Inches(0.6), Inches(1.15), Inches(1.2), Inches(0.05))
+                bar.fill.solid()
+                bar.fill.fore_color.rgb = t["accent"]
+                bar.line.fill.background()
+
+                # 要点
+                tb2 = slide.shapes.add_textbox(Inches(0.8), Inches(1.5), Inches(11.5), Inches(5.3))
+                tf2 = tb2.text_frame
+                tf2.word_wrap = True
+                for j, bullet in enumerate(bullets):
+                    para2 = tf2.paragraphs[0] if j == 0 else tf2.add_paragraph()
+                    para2.text = f"• {bullet}"
+                    para2.font.size = Pt(18)
+                    para2.font.color.rgb = t["text"]
+                    para2.space_after = Pt(10)
+
+            # 演讲备注
+            notes = slide_data.get("notes", "")
+            if notes:
+                slide.notes_slide.notes_text_frame.text = notes
+
+        prs.save(str(p))
+        logger.info(f"已生成 PPT: {p}")
+        return json.dumps({"success": True, "file_path": str(p), "slides": len(slides), "theme": theme})
+    except Exception as e:
+        logger.error(f"generate_pptx 失败: {e}")
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 def create_task_instruction(task_name: str, instructions: str, priority: str = "normal") -> str:
     """
     在桥接目录中创建一个任务指令文件，Kimi Work 的 Automation 可定时扫描并执行该任务。
@@ -646,6 +878,8 @@ def get_bridge_info() -> str:
                 "generate_pdf_from_markdown",
                 "convert_data_to_pptx_outline",
                 "deep_research_brief",
+                "generate_chart_image",
+                "generate_pptx",
                 "create_task_instruction",
                 "check_task_status",
                 "sync_clipboard",

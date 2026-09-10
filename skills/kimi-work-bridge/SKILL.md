@@ -1,16 +1,16 @@
 ---
 name: kimi-work-bridge-skill
-version: 1.1.0
+version: 1.2.0
 display_name: Kimi Work 桥接技能
 display_name_en: Kimi Work Bridge Skill
 description: 指导 WorkBuddy Agent 高效调用 Kimi Work 桥接连接器的完整使用规范
-description_zh: 指导 WorkBuddy Agent 高效调用 Kimi Work 桥接连接器的完整使用规范。包含 14 个工具的详细说明、参数解释、最佳实践与完整工作流示例，帮助 Agent 准确判断何时、如何调用 Kimi Work 的数据分析、报告生成、深度研究与任务调度能力。
-description_en: A comprehensive guide for WorkBuddy Agent to efficiently invoke the Kimi Work Bridge Connector. Includes detailed documentation for 14 tools, parameter explanations, best practices, and complete workflow examples to help the Agent accurately determine when and how to leverage Kimi Work's data analysis, report generation, deep research, and task scheduling capabilities.
+description_zh: 指导 WorkBuddy Agent 高效调用 Kimi Work 桥接连接器的完整使用规范。包含 16 个工具的详细说明、参数解释、最佳实践与完整工作流示例，帮助 Agent 准确判断何时、如何调用 Kimi Work 的数据分析、报告生成、图表与 PPT 生成、深度研究与任务调度能力。
+description_en: A comprehensive guide for WorkBuddy Agent to efficiently invoke the Kimi Work Bridge Connector. Includes detailed documentation for 16 tools, parameter explanations, best practices, and complete workflow examples to help the Agent accurately determine when and how to leverage Kimi Work's data analysis, report generation, chart and PPT generation, deep research, and task scheduling capabilities.
 author: Your Name
 license: MIT
 ---
 
-# Kimi Work 桥接技能 v1.1
+# Kimi Work 桥接技能 v1.2
 
 ## 概述
 
@@ -38,6 +38,8 @@ Kimi Work 是月之暗面推出的 AI 原生工作台，擅长：
 | Markdown 转 PDF | `generate_pdf_from_markdown` | 正式文档交付 |
 | 数据转 PPT 大纲 | `convert_data_to_pptx_outline` | 为 WorkBuddy PPT 生成准备素材 |
 | 派发深度研究任务 | `deep_research_brief` | 触发 Kimi Work 联网搜索 + 长文本分析 |
+| 生成 PNG 图表 | `generate_chart_image` | matplotlib 离线渲染，适合嵌入 PPT/Word/PDF |
+| 直接生成 PPT 文件 | `generate_pptx` | 无需经过大纲转换，原生 .pptx 输出 |
 | 异步任务调度 | `create_task_instruction` + `check_task_status` | 非即时返回的长任务 |
 | 快速内容交换 | `sync_clipboard` | 剪贴板级文本互通 |
 | 文件读写 | `write_file` / `read_file` | 通用文件交换 |
@@ -127,7 +129,39 @@ generate_pdf_from_markdown(md_file_path="...", output_path="...") → 生成 .pd
 - `deep_research_brief`：专用于研究类任务，自动包含搜索、整合、结构化输出的指令模板
 - `create_task_instruction`：通用任务调度，需自行编写完整指令
 
-### 8. 剪贴板交换（sync_clipboard）
+### 8. PNG 图表生成（generate_chart_image）
+
+用 matplotlib **离线**渲染 PNG 图表，不依赖任何网络或前端环境，渲染结果可稳定嵌入 Word / PPT / PDF，也适合无网环境。
+
+**参数说明**：
+- `title`：图表标题
+- `data_json`：JSON 数组，每个元素为一个数据点（对象），如 `[{"月份": "8月", "销售额": 150}, ...]`
+- `output_path`：输出 PNG 路径（必须在白名单目录内）
+- `chart_type`：`"bar"`（柱状）、`"line"`（折线）、`"pie"`（饼图）
+
+**典型组合**：先用 `generate_chart_image` 生成 PNG，再以 `{"type": "image", "image_path": "charts/xxx.png"}` 插入 `generate_pptx` 的 slides_json，一次调用产出带图表的完整 PPT。
+
+### 9. PPT 直接生成（generate_pptx）
+
+直接产出真正的 `.pptx` 文件，无需再经过 `convert_data_to_pptx_outline` 的大纲转换。16:9 宽屏，支持三种页型和三种主题。
+
+**slides_json 格式**（JSON 数组，每页一个对象）：
+```json
+[
+  {"type": "title", "heading": "季度复盘", "content": "2026 Q3", "notes": "开场 30 秒"},
+  {"type": "bullets", "heading": "核心数据", "bullet_points": ["销售额 1.2 亿", "同比增长 23%"], "notes": "强调华东区"},
+  {"type": "image", "heading": "月度趋势", "image_path": "charts/monthly.png", "notes": ""}
+]
+```
+
+**参数说明**：
+- `type`：`"title"`（标题页）/ `"bullets"`（要点页）/ `"image"`（图片页）
+- `theme`：`"default"`（商务蓝）/ `"dark"`（科技黑）/ `"light"`（简约白）
+- `notes`：演讲备注，写入对应页面的备注区
+
+**与 `convert_data_to_pptx_outline` 的区别**：`generate_pptx` 直接出成品 .pptx；大纲工具只产出 JSON 结构，供 WorkBuddy 自身 PPT 能力使用。
+
+### 10. 剪贴板交换（sync_clipboard）
 
 轻量级的文本内容交换，适合快速传递小段内容（如一段代码、一个链接、一个公式）。
 
@@ -135,7 +169,7 @@ generate_pdf_from_markdown(md_file_path="...", output_path="...") → 生成 .pd
 - WorkBuddy `sync_clipboard(action="write", content="...")`
 - Kimi Work 侧读取 `bridge-io/shared_clipboard.txt`
 
-### 9. 任务调度（create_task_instruction / check_task_status）
+### 11. 任务调度（create_task_instruction / check_task_status）
 
 用于 Kimi Work 无法即时返回的**长任务**（如批量数据处理、复杂报告生成）。
 
@@ -155,7 +189,7 @@ generate_pdf_from_markdown(md_file_path="...", output_path="...") → 生成 .pd
 → 若 status == "pending"，告知用户仍在处理中
 ```
 
-### 10. Excel 报告生成（generate_excel_report）
+### 12. Excel 报告生成（generate_excel_report）
 
 WorkBuddy 可将结构化数据（如 JSON 数组）交给 Kimi Work 生成格式化的 Excel 文件。
 
@@ -181,7 +215,7 @@ WorkBuddy 可将结构化数据（如 JSON 数组）交给 Kimi Work 生成格�
    - `analyze_data` 目前支持最大 5MB 的文件
    - `generate_pdf_from_markdown` 对超大 Markdown 可能分页不佳，建议控制单文件在 50 页以内
 5. **协同提示**：向用户说明"正在调用 Kimi Work 的 XX 能力"，增强透明度和信任感。
-6. **版本兼容**：本 Skill 适配桥接服务 v1.1.0+，旧版可能缺少 `create_html_dashboard`、`deep_research_brief` 等工具。
+6. **版本兼容**：本 Skill 适配桥接服务 v1.2.0+，旧版可能缺少 `generate_chart_image`、`generate_pptx`、`deep_research_brief` 等工具。
 
 ---
 
@@ -216,6 +250,6 @@ WorkBuddy 可将结构化数据（如 JSON 数组）交给 Kimi Work 生成格�
 ---
 
 **维护者**：Your Name  
-**版本**：1.1.0  
-**适配桥接服务版本**：≥ 1.1.0  
+**版本**：1.2.0  
+**适配桥接服务版本**：≥ 1.2.0  
 **适配 WorkBuddy 版本**：≥ 2026.09
